@@ -184,10 +184,12 @@ static void rebuild_cpu_topology(void) {
     if (smt_spoof) {
         pkg->cores = p0_last;
         die->cores = p0_last;
-    } else if (p1_count != 0) {
+        die->num_cores = p0_count;
+    } else {
         core = e0_cpus[0]->core;
         core->next_in_die = p0_last;
         core->next_in_pkg = p0_last;
+        die->num_cores = p0_count + e0_count;
     }
 
     for (int i=0; i<p0_count; ++i) {
