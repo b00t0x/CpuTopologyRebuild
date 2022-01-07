@@ -19,8 +19,6 @@ int p0_count = 0;
 int p1_count = 0;
 int e0_count = 0;
 
-extern "C" void x86_validate_topology(void);
-
 static void print_cache_info(x86_cpu_cache_t *cache) {
     x86_lcpu_t *cpu;
 
