@@ -198,6 +198,8 @@ static void rebuild_cpu_topology(void) {
         core = cpu->core;
         core->lcore_num = i;
         core->pcore_num = i;
+        core->num_lcpus = 1;
+        core->lcpus = cpu;
         if (i != 0) {
             core->next_in_pkg = p0_cpus[i-1]->core;
             core->next_in_die = p0_cpus[i-1]->core;
