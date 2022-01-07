@@ -254,11 +254,12 @@ IOService *CpuTopologyRebuild::probe(IOService *provider, SInt32 *score) {
         done = true;
 
         KernelPatcher &p = lilu.getKernelPatcher();
-        org_x86_validate_topology = p.routeFunction(reinterpret_cast<uintptr_t>(x86_validate_topology),
-                                                    reinterpret_cast<uintptr_t>(my_x86_validate_topology),
-                                                    true, true, false);
-        p.clearError();
-        PANIC_COND(org_x86_validate_topology == 0, "ctr", "failed to route _x86_validate_topology");
+        KernelPatcher::RouteRequest request(
+            "_x86_validate_topology",
+            my_x86_validate_topology,
+            org_x86_validate_topology
+        );
+        PANIC_COND(!p.routeMultiple(KernelPatcher::KernelID, &request, 1), "ctr", "failed to route _x86_validate_topology");
 
         setProperty("VersionInfo", kextVersion);
         return this;
