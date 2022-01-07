@@ -137,6 +137,7 @@ static void rebuild_cache_topology(void) {
 
     for (int i=0; i<(e0_count/4); ++i) {
         e_primary = e0_cpus[i*4];
+        e_primary->caches[0]->cache_size = 64 * 1024; // 64KB
         l2 = e_primary->caches[1];
         l2->cache_size = 2 * 1024 * 1024; // 2MB
         for (int j=1; j<4; ++j) {
