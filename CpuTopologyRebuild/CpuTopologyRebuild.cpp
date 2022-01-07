@@ -1,5 +1,4 @@
 #define ACIDANTHERA_PRIVATE
-#define MSR_CORE_THREAD_COUNT 0x35
 
 #include "CpuTopologyRebuild.h"
 #include <i386/cpu_topology.h>
