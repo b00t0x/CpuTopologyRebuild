@@ -40,6 +40,7 @@ CpuToplogyRebuild/.DS_Store
 xcuserdata
 xcshareddata
 project.xcworkspace
+.vscode
 
 Lilu.kext
 DerivedData
