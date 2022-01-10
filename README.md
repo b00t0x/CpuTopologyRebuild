@@ -16,7 +16,7 @@ The effect of this kext is not yet clear, but I've seen not only a cosmetic effe
 * When HT disabled, E-Cores are recognized as a logical thread of P-Cores with or without `-ctrsmt`. 
 
 ### Topology examples
-|||ProvideCurrentCpuInfo|ProvideCurrentCpuInfo<br>+ CpuTopologyRebuild.kext|ProvideCurrentCpuInfo<br>+ CpuTopologyRebuild.kext<br>+ `-ctrsmt`|
+|||ProvideCurrentCpuInfo|ProvideCurrentCpuInfo<br>+ CpuTopologyRebuild|ProvideCurrentCpuInfo<br>+ CpuTopologyRebuild<br>+ `-ctrsmt`|
 |-|:-|-:|-:|-:|
 |Core i9|8P+8E+HT|24c24t|16c24t|8c24t|
 |       |8P+8E   |16c16t| 8c16t|8c16t|
