@@ -4,6 +4,7 @@
 
 #include "CpuTopologyRebuild.h"
 #include <i386/cpu_topology.h>
+// #include <i386/cpuid.h>
 #include <Headers/kern_api.hpp>
 #include <Headers/kern_patcher.hpp>
 #include <Headers/kern_version.hpp>
@@ -174,14 +175,17 @@ static void rebuild_cpu_topology(void) {
     x86_core_t *core;
     x86_lcpu_t *cpu;
 
+    // i386_cpu_info_t *info = cpuid_info();
     x86_core_t *p0_last = p0_cpus[p0_count - 1]->core;
     if (smt_spoof) {
         pkg->cores = die->cores = p0_last;
         die->num_cores = p0_count;
+        // info->core_count = p0_count;
     } else {
         core = e0_cpus[0]->core;
         core->next_in_die = core->next_in_pkg = p0_last;
         die->num_cores = p0_count + e0_count;
+        // info->core_count = p0_count + e0_count;
     }
 
     for (int i=0; i<p0_count; ++i) {
