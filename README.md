@@ -30,7 +30,7 @@ patches.plist can be used instead of `ProvideCurrentCpuInfo` quirk. It is not ne
 
 ### Current problems
 * Changing the number of cores in cpuid info causes instability such as random boot failing, so it has not been changed now. Therefore, the number of cores and threads changes can be seen only in limited situations such as a Geekbench result window.
-* For the same reason, RestrictEvents.kext's `revcpuname` does not work because the number of cores recognized by RestrictEvents.kext and About This Mac window are different.
+* For the same reason, RestrictEvents.kext's `revcpuname` does not work because the number of cores recognized by RestrictEvents.kext and About This Mac window are different. I added the [modded RestrictEvents.kext](https://github.com/b00t0x/CpuTopologyRebuild/releases/download/1.0.0/RestrictEvents-1.0.6-RELEASE.zip) with [a temporary fix](https://gist.github.com/b00t0x/a13cefd4644e9d6d57908ce3420c3002/revisions#diff-05dc028a5ab0c2add1caa1f39c489de16c7a12b1f061ad85b4f4300dec1ccbb7) to solve the issue.
 
 ### Credits
 - [Apple](https://www.apple.com) for macOS
