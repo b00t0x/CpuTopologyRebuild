@@ -1,4 +1,3 @@
-#define ACIDANTHERA_PRIVATE
 #define P_CORE_MAX_COUNT 32
 #define E_CORE_MAX_COUNT 64
 
@@ -251,13 +250,15 @@ IOService *CpuTopologyRebuild::probe(IOService *provider, SInt32 *score) {
 
         done = true;
 
-        KernelPatcher &p = lilu.getKernelPatcher();
-        KernelPatcher::RouteRequest request(
-            "_x86_validate_topology",
-            my_x86_validate_topology,
-            org_x86_validate_topology
-        );
-        PANIC_COND(!p.routeMultiple(KernelPatcher::KernelID, &request, 1), "ctr", "failed to route _x86_validate_topology");
+        lilu.onPatcherLoadForce([](void *user, KernelPatcher &patcher) {
+            // my_x86_validate_topology(); // it also not worked
+            KernelPatcher::RouteRequest request(
+                "_x86_validate_topology",
+                my_x86_validate_topology,
+                org_x86_validate_topology
+            );
+            patcher.routeMultiple(KernelPatcher::KernelID, &request, 1);
+        });
 
         setProperty("VersionInfo", kextVersion);
         return this;
