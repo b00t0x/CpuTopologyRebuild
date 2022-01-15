@@ -1,4 +1,3 @@
-#define ACIDANTHERA_PRIVATE
 #define P_CORE_MAX_COUNT 32
 #define E_CORE_MAX_COUNT 64
 
@@ -19,6 +18,8 @@ x86_lcpu_t *p0_cpus[P_CORE_MAX_COUNT]; // P-Cores
 x86_lcpu_t *p1_cpus[P_CORE_MAX_COUNT]; // P-Cores HT
 x86_lcpu_t *e0_cpus[E_CORE_MAX_COUNT]; // E-Cores
 int p0_count, p1_count, e0_count;
+
+extern "C" void x86_validate_topology(void);
 
 static void print_cache_info(x86_cpu_cache_t *cache) {
     x86_lcpu_t *cpu;
@@ -223,7 +224,6 @@ static void rebuild_cpu_topology(void) {
     rebuild_cache_topology();
 }
 
-static uintptr_t org_x86_validate_topology;
 void my_x86_validate_topology(void) {
     load_cpus();
     DBGLOG("ctr", "---- CPU/Cache topology before rebuild ----");
@@ -251,13 +251,21 @@ IOService *CpuTopologyRebuild::probe(IOService *provider, SInt32 *score) {
 
         done = true;
 
-        KernelPatcher &p = lilu.getKernelPatcher();
-        KernelPatcher::RouteRequest request(
-            "_x86_validate_topology",
-            my_x86_validate_topology,
-            org_x86_validate_topology
-        );
-        PANIC_COND(!p.routeMultiple(KernelPatcher::KernelID, &request, 1), "ctr", "failed to route _x86_validate_topology");
+        uint8_t patchData[6 + sizeof(uintptr_t)] = {0xFF, 0x25};
+
+        void (*fn)(void) = my_x86_validate_topology;
+        lilu_os_memcpy(&patchData[6], &fn, sizeof(fn));
+
+        if (UNLIKELY(MachInfo::setKernelWriting(true, KernelPatcher::kernelWriteLock) != KERN_SUCCESS)) {
+            SYSLOG("ctr", "failed to obtain write permissions for f/r");
+            return nullptr;
+        }
+
+        lilu_os_memcpy((void *)x86_validate_topology, patchData, sizeof(patchData));
+
+        if (UNLIKELY(MachInfo::setKernelWriting(false, KernelPatcher::kernelWriteLock) != KERN_SUCCESS)) {
+            SYSLOG("ctr", "failed to restore write permissions for f/r");
+        }
 
         setProperty("VersionInfo", kextVersion);
         return this;
