@@ -18,6 +18,7 @@ x86_lcpu_t *p0_cpus[P_CORE_MAX_COUNT]; // P-Cores
 x86_lcpu_t *p1_cpus[P_CORE_MAX_COUNT]; // P-Cores HT
 x86_lcpu_t *e0_cpus[E_CORE_MAX_COUNT]; // E-Cores
 int p0_count, p1_count, e0_count;
+int e_core_first = -1;
 
 extern "C" void x86_validate_topology(void);
 
@@ -89,7 +90,8 @@ static void print_cpu_topology(void) {
         DBGLOG("ctr", "  Core(p/l): %d/%d (lcpus: %d)", core->pcore_num, core->lcore_num, core->num_lcpus);
         cpu = core->lcpus;
         while (cpu != nullptr) {
-            DBGLOG("ctr", "    LCPU(n/p/l): %2d/%2d/%d", cpu->cpu_num, cpu->pnum, cpu->lnum);
+            const char *type = cpu->pnum < e_core_first ? cpu->pnum % 2 == 0 ? "P0" : "P1" : "E0";
+            DBGLOG("ctr", "    LCPU_%s(n/p/l): %2d/%2d/%d", type, cpu->cpu_num, cpu->pnum, cpu->lnum);
             cpu = cpu->next_in_core;
         }
         core = core->next_in_pkg;
@@ -107,11 +109,14 @@ static void load_cpus(void) {
     cpu = pkg->lcpus;
     while (cpu != nullptr) {
         cpus_reverse[count++] = cpu;
+        if (e_core_first == -1 || e_core_first - cpu->pnum == 2) {
+            e_core_first = cpu->pnum;
+        }
         cpu = cpu->next_in_pkg;
     }
     for (int i=0; i<count; ++i) {
         cpu = cpus_reverse[count - 1 - i];
-        if (cpu->pnum < 64) { // P-Core
+        if (cpu->pnum < e_core_first) { // P-Core
             if (cpu->pnum % 2 == 0) { // primary
                 p0_cpus[p0_count++] = cpu;
             } else { // HT core
