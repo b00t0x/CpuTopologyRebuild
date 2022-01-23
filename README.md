@@ -9,7 +9,7 @@ OpenCore's `ProvideCurrentCpuInfo` quirk enables Alder Lake's both P-Cores and E
 This kext aims to improve performance by rebuild the topology for these cores and threads.
 
 The effect of this kext is not yet clear, but I've seen not only a cosmetic effect, but also some performance improvements. For example, the Geekbench 5 score on the Windows VM have increased in the case of allocating a small number of cores to VMware Fusion.  
-Other examples : https://github.com/b00t0x/CpuTopologyRebuild/wiki/%E3%83%91%E3%83%95%E3%82%A9%E3%83%BC%E3%83%9E%E3%83%B3%E3%82%B9%E3%81%AB%E9%96%A2%E3%81%99%E3%82%8B%E6%8E%A8%E5%AF%9F (Japanese)
+Other examples : [Japanese](https://github.com/b00t0x/CpuTopologyRebuild/wiki/%E3%83%91%E3%83%95%E3%82%A9%E3%83%BC%E3%83%9E%E3%83%B3%E3%82%B9%E3%81%AB%E9%96%A2%E3%81%99%E3%82%8B%E6%8E%A8%E5%AF%9F) / [English(Translated)](https://github-com.translate.goog/b00t0x/CpuTopologyRebuild/wiki/%E3%83%91%E3%83%95%E3%82%A9%E3%83%BC%E3%83%9E%E3%83%B3%E3%82%B9%E3%81%AB%E9%96%A2%E3%81%99%E3%82%8B%E6%8E%A8%E5%AF%9F?_x_tr_sl=ja&_x_tr_tl=en)
 
 ### Usage
 * Use this kext with `ProvideCurrentCpuInfo` quirk.
