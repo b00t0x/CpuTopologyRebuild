@@ -1,5 +1,8 @@
 CpuTopologyRebuild Changelog
 ===================
+#### v1.1.0
+- "Total Number of Cores" in System Profiler is displayed correctly
+
 #### v1.0.2
 - Fixed E-Core detection logic for i5-12600K ( #7 )
 
