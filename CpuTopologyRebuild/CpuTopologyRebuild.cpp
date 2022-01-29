@@ -84,7 +84,7 @@ static void print_cpu_topology(void) {
     x86_core_t *core;
     x86_lcpu_t *cpu;
 
-    DBGLOG("ctr", "CPU info:");
+    DBGLOG("ctr", "CPU: physical_cpu_max=%d, logical_cpu_max=%d", machine_info.physical_cpu_max, machine_info.logical_cpu_max);
     core = pkg->cores;
     while (core != nullptr) {
         DBGLOG("ctr", "  Core(p/l): %d/%d (lcpus: %d)", core->pcore_num, core->lcore_num, core->num_lcpus);
@@ -186,11 +186,13 @@ static void rebuild_cpu_topology(void) {
     if (smt_spoof) {
         pkg->cores = die->cores = p_core_last;
         die->num_cores = p0_count;
+        machine_info.physical_cpu_max = p0_count;
         // info->core_count = p0_count;
     } else {
         core = e0_cpus[0]->core;
         core->next_in_die = core->next_in_pkg = p_core_last;
         die->num_cores = p0_count + e0_count;
+        machine_info.physical_cpu_max = p0_count + e0_count;
         // info->core_count = p0_count + e0_count;
     }
 
