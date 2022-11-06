@@ -1,5 +1,5 @@
 # CpuTopologyRebuild
-An **experimental** Lilu plugin that optimizes Alder Lake's heterogeneous core configuration.
+An **experimental** Lilu plugin that optimizes Alder Lake / Raptor Lake's heterogeneous core configuration.
 
 For example, this kext is possible to recognize the Core i9-12900K's topology as 16 cores 24 threads or 8 cores 24 threads.
 
@@ -19,12 +19,13 @@ Other examples : [Japanese](https://github.com/b00t0x/CpuTopologyRebuild/wiki/%E
 ### Topology examples
 |||ProvideCurrentCpuInfo|ProvideCurrentCpuInfo<br>+ CpuTopologyRebuild|ProvideCurrentCpuInfo<br>+ CpuTopologyRebuild<br>+ `-ctrsmt`|
 |-|:-|-:|-:|-:|
-|Core i9|8P+8E+HT|24c24t|16c24t|8c24t|
-|       |8P+8E   |16c16t| 8c16t|8c16t|
-|Core i7|8P+4E+HT|20c20t|12c20t|8c20t|
-|       |8P+4E   |12c12t| 8c12t|8c12t|
-|Core i5|6P+4E+HT|16c16t|10c16t|6c16t|
-|       |6P+4E   |10c10t| 6c10t|6c10t|
+|Core i9-13900K|8P+16E+HT|32c32t|24c32t|8c32t|
+|Core i9-12900K|8P+8E+HT |24c24t|16c24t|8c24t|
+|              |8P+8E    |16c16t| 8c16t|8c16t|
+|Core i7-12700K|8P+4E+HT |20c20t|12c20t|8c20t|
+|              |8P+4E    |12c12t| 8c12t|8c12t|
+|Core i5-12600K|6P+4E+HT |16c16t|10c16t|6c16t|
+|              |6P+4E    |10c10t| 6c10t|6c10t|
 
 ### About patches.plist
 #### patches_ht.plist
@@ -43,4 +44,5 @@ With `ProvideCurrentCpuInfo`, Hyper Threading is recognized as disabled due to t
 ### Credits
 - [Apple](https://www.apple.com) for macOS
 - [vit9696](https://github.com/vit9696) for original [CpuTopologySync](https://github.com/acidanthera/CpuTopologySync/tree/b2ce2619ea7e58ec4553ed3441aa03af6b771cdf)
+- [bootmacos](https://bootmacos.com/) for confirmation about Raptor Lake (i9-13900KF) and Ventura
 - [b00t0x](https://github.com/b00t0x) for writing the software and maintaining it
