@@ -39,10 +39,10 @@ With `ProvideCurrentCpuInfo`, Hyper Threading is recognized as disabled due to t
 * Changing the number of cores in cpuid info causes instability such as random boot failing, so it has not been changed now.
 * For the same reason, RestrictEvents.kext's `revcpuname` does not work because the number of cores recognized by RestrictEvents.kext and About This Mac window are different. I added the [modded RestrictEvents.kext](https://github.com/b00t0x/CpuTopologyRebuild/releases/download/1.0.0/RestrictEvents-1.0.6-RELEASE.zip) with [a temporary fix](https://gist.github.com/b00t0x/a13cefd4644e9d6d57908ce3420c3002#file-restrictevents-cpp-diff) to solve the issue.
   * This issue expected to be [fixed](https://github.com/acidanthera/RestrictEvents/pull/6) in RestrictEvents.kext 1.0.7.
-* Untested with Core i7-12xxx.
 
 ### Credits
 - [Apple](https://www.apple.com) for macOS
 - [vit9696](https://github.com/vit9696) for original [CpuTopologySync](https://github.com/acidanthera/CpuTopologySync/tree/b2ce2619ea7e58ec4553ed3441aa03af6b771cdf)
 - [bootmacos](https://bootmacos.com/) for confirmation about Raptor Lake (i9-13900KF) and Ventura
+- [taruyato](https://github.com/taruyato) for confirmation 8P+4E configuration (i7-12700F) and Ventura ( #12 )
 - [b00t0x](https://github.com/b00t0x) for writing the software and maintaining it
