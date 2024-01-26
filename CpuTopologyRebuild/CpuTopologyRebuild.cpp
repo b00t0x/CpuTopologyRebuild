@@ -13,6 +13,7 @@ OSDefineMetaClassAndStructors(CpuTopologyRebuild, IOService)
 bool ADDPR(debugEnabled) = true;
 uint32_t ADDPR(debugPrintDelay) = 0;
 
+bool print_only = false;
 bool smt_spoof = false;
 x86_lcpu_t *p0_cpus[P_CORE_MAX_COUNT]; // P-Cores
 x86_lcpu_t *p1_cpus[P_CORE_MAX_COUNT]; // P-Cores HT
@@ -21,6 +22,7 @@ int p0_count, p1_count, e0_count;
 int e_core_first = -1;
 
 extern "C" void x86_validate_topology(void);
+extern "C" int kdb_printf_unbuffered(const char *fmt, ...);
 
 static void print_cache_info(x86_cpu_cache_t *cache) {
     x86_lcpu_t *cpu;
@@ -47,7 +49,7 @@ static void print_cache_info(x86_cpu_cache_t *cache) {
         cpu = cache->cpus[++i];
     }
 
-    DBGLOG("ctr", "  %s/type=%d/level=%d/%dKB/maxcpus=%d/nlcpus=%d/lcpus=%s",
+    SYSLOG("ctr", "  %s/type=%d/level=%d/%dKB/maxcpus=%d/nlcpus=%d/lcpus=%s",
         cache_name, cache->type, cache->level, cache->cache_size / 1024, cache->maxcpus, cache->nlcpus, lcpus);
 }
 
@@ -58,7 +60,7 @@ static void print_cache_topology(void) {
     x86_cpu_cache_t *caches[256];
     int cache_count = 0;
 
-    DBGLOG("ctr", "Cache info:");
+    SYSLOG("ctr", "Cache info:");
     for (int i=2; i>=0; --i) { // LLC->L2->L1
         cpu = pkg->lcpus;
         while (cpu != nullptr) {
@@ -84,17 +86,104 @@ static void print_cpu_topology(void) {
     x86_core_t *core;
     x86_lcpu_t *cpu;
 
-    DBGLOG("ctr", "CPU: physical_cpu_max=%d, logical_cpu_max=%d", machine_info.physical_cpu_max, machine_info.logical_cpu_max);
+    SYSLOG("ctr", "CPU: physical_cpu_max=%d, logical_cpu_max=%d", machine_info.physical_cpu_max, machine_info.logical_cpu_max);
     core = pkg->cores;
     while (core != nullptr) {
-        DBGLOG("ctr", "  Core(p/l): %d/%d (lcpus: %d)", core->pcore_num, core->lcore_num, core->num_lcpus);
+        SYSLOG("ctr", "  Core(p/l): %d/%d (lcpus: %d)", core->pcore_num, core->lcore_num, core->num_lcpus);
         cpu = core->lcpus;
         while (cpu != nullptr) {
             const char *type = cpu->pnum < e_core_first ? cpu->pnum % 2 == 0 ? "P0" : "P1" : "E0";
-            DBGLOG("ctr", "    LCPU_%s(n/p/l): %2d/%2d/%d", type, cpu->cpu_num, cpu->pnum, cpu->lnum);
+            SYSLOG("ctr", "    LCPU_%s(n/p/l): %2d/%2d/%d", type, cpu->cpu_num, cpu->pnum, cpu->lnum);
             cpu = cpu->next_in_core;
         }
         core = core->next_in_pkg;
+    }
+}
+
+static void print_lcpu_topology(x86_lcpu_t *lcpu) {
+    SYSLOG("ctr", "      lcpu(%p): pnum=%d, lnum=%d, cpu_num=%d, primary=%d, master=%d",
+        lcpu, lcpu->pnum, lcpu->lnum, lcpu->cpu_num, lcpu->primary, lcpu->master);
+}
+
+static void print_core_topology(x86_core_t *core) {
+    x86_lcpu_t *lcpu = core->lcpus;
+
+    SYSLOG("ctr", "    Core(%p): pcore_num=%d, lcore_num=%d, num_lcpus=%d", core, core->pcore_num, core->lcore_num, core->num_lcpus);
+
+    SYSLOG("ctr", "    Core->lcpu chain:");
+    while (lcpu != nullptr) {
+        SYSLOG("ctr", "      %p(%d/%d)", lcpu, lcpu->pnum, lcpu->lnum);
+        lcpu = lcpu->next_in_core;
+    }
+
+    lcpu = core->lcpus;
+    while (lcpu != nullptr) {
+        print_lcpu_topology(lcpu);
+        lcpu = lcpu->next_in_core;
+    }
+}
+
+static void print_die_topology(x86_die_t *die) {
+    x86_core_t *core = die->cores;
+    x86_lcpu_t *lcpu = die->lcpus;
+
+    SYSLOG("ctr", "  Die(%p): pdie_num=%d, ldie_num=%d, num_cores=%d", die, die->pdie_num, die->ldie_num, die->num_cores);
+
+    SYSLOG("ctr", "  Die->Core chain:");
+    while (core != nullptr) {
+        SYSLOG("ctr", "    %p(%d/%d)", core, core->pcore_num, core->lcore_num);
+        core = core->next_in_die;
+    }
+    SYSLOG("ctr", "  Die->lcpu chain:");
+    while (lcpu != nullptr) {
+        SYSLOG("ctr", "    %p(%d/%d)", lcpu, lcpu->pnum, lcpu->lnum);
+        lcpu = lcpu->next_in_die;
+    }
+
+    core = die->cores;
+    while (core != nullptr) {
+        print_core_topology(core);
+        core = core->next_in_die;
+    }
+}
+
+static void print_pkg_topology(x86_pkg_t *pkg) {
+    x86_die_t  *die = pkg->dies;
+    x86_core_t *core = pkg->cores;
+    x86_lcpu_t *lcpu = pkg->lcpus;
+
+    SYSLOG("ctr", "Pkg(%p): ppkg_num=%d, lpkg_num=%d, num_dies=%d", pkg, pkg->ppkg_num, pkg->lpkg_num, pkg->num_dies);
+
+    SYSLOG("ctr", "Pkg->Die chain:");
+    while (die != nullptr) {
+        SYSLOG("ctr", "  %p(%d/%d)", die, die->pdie_num, die->ldie_num);
+        die = die->next_in_pkg;
+    }
+    SYSLOG("ctr", "Pkg->Core chain:");
+    while (core != nullptr) {
+        SYSLOG("ctr", "  %p(%d/%d)", core, core->pcore_num, core->lcore_num);
+        core = core->next_in_pkg;
+    }
+    SYSLOG("ctr", "Pkg->lcpu chain:");
+    while (lcpu != nullptr) {
+        SYSLOG("ctr", "  %p(%d/%d)", lcpu, lcpu->pnum, lcpu->lnum);
+        lcpu = lcpu->next_in_pkg;
+    }
+
+    die = pkg->dies;
+    while (die != nullptr) {
+        print_die_topology(die);
+        die = die->next_in_pkg;
+    }
+}
+
+static void print_cpu_topology2(void) {
+    x86_pkg_t  *pkg = x86_pkgs;
+
+    SYSLOG("ctr", "CPU: physical_cpu_max=%d, logical_cpu_max=%d", machine_info.physical_cpu_max, machine_info.logical_cpu_max);
+    while (pkg != nullptr) {
+        print_pkg_topology(pkg);
+        pkg = pkg->next;
     }
 }
 
@@ -233,11 +322,15 @@ static void rebuild_cpu_topology(void) {
 
 void my_x86_validate_topology(void) {
     load_cpus();
-    DBGLOG("ctr", "---- CPU/Cache topology before rebuild ----");
+    SYSLOG("ctr", "---- CPU/Cache topology before rebuild ----");
+    print_cpu_topology2();
     print_cpu_topology();
     print_cache_topology();
+    if (print_only) {
+        return;
+    }
     rebuild_cpu_topology();
-    DBGLOG("ctr", "---- CPU/Cache topology after rebuild ----");
+    SYSLOG("ctr", "---- CPU/Cache topology after rebuild ----");
     print_cpu_topology();
     print_cache_topology();
     // FunctionCast(my_x86_validate_topology, org_x86_validate_topology)(); // skip topology validation
@@ -254,6 +347,7 @@ IOService *CpuTopologyRebuild::probe(IOService *provider, SInt32 *score) {
     if (!done) {
         lilu_get_boot_args("liludelay", &ADDPR(debugPrintDelay), sizeof(ADDPR(debugPrintDelay)));
         ADDPR(debugEnabled) = checkKernelArgument("-ctrdbg") || checkKernelArgument("-liludbgall");
+        print_only = checkKernelArgument("-ctrprt") || true;
         smt_spoof = checkKernelArgument("-ctrsmt");
 
         done = true;
