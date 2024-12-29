@@ -24,108 +24,90 @@ int e_core_first = -1;
 extern "C" void x86_validate_topology(void);
 extern "C" int kdb_printf_unbuffered(const char *fmt, ...);
 
-static void print_cpu_topology(void) {
-    x86_pkg_t  *pkg = x86_pkgs;
-    x86_core_t *core;
-    x86_lcpu_t *cpu;
-
-    SYSLOG("ctr", "CPU: physical_cpu_max=%d, logical_cpu_max=%d", machine_info.physical_cpu_max, machine_info.logical_cpu_max);
-    core = pkg->cores;
-    while (core != nullptr) {
-        SYSLOG("ctr", "  Core(p/l): %d/%d (lcpus: %d)", core->pcore_num, core->lcore_num, core->num_lcpus);
-        cpu = core->lcpus;
-        while (cpu != nullptr) {
-            const char *type = cpu->pnum < e_core_first ? cpu->pnum % 2 == 0 ? "P0" : "P1" : "E0";
-            SYSLOG("ctr", "    LCPU_%s(n/p/l): %2d/%2d/%d", type, cpu->cpu_num, cpu->pnum, cpu->lnum);
-            cpu = cpu->next_in_core;
-        }
-        core = core->next_in_pkg;
-    }
-}
-
 static void print_lcpu_topology(x86_lcpu_t *lcpu) {
-    SYSLOG("ctr", "      lcpu(%p): pnum=%d, lnum=%d, cpu_num=%d, primary=%d, master=%d",
+    SYSLOG("ctr", "      lcpu(%p): pnum=%2d, lnum=%2d, cpu_num=%2d, primary=%d, master=%d",
         lcpu, lcpu->pnum, lcpu->lnum, lcpu->cpu_num, lcpu->primary, lcpu->master);
 }
 
 static void print_core_topology(x86_core_t *core) {
-    x86_lcpu_t *lcpu = core->lcpus;
-
-    SYSLOG("ctr", "    Core(%p): pcore_num=%d, lcore_num=%d, num_lcpus=%d", core, core->pcore_num, core->lcore_num, core->num_lcpus);
-
-    SYSLOG("ctr", "    Core->lcpu chain:");
-    while (lcpu != nullptr) {
-        SYSLOG("ctr", "      %p(%d/%d)", lcpu, lcpu->pnum, lcpu->lnum);
-        lcpu = lcpu->next_in_core;
-    }
-
-    lcpu = core->lcpus;
-    while (lcpu != nullptr) {
-        print_lcpu_topology(lcpu);
-        lcpu = lcpu->next_in_core;
-    }
+    SYSLOG("ctr", "    Core(%p): pcore_num=%2d, lcore_num=%2d, num_lcpus=%d",
+        core, core->pcore_num, core->lcore_num, core->num_lcpus);
 }
 
 static void print_die_topology(x86_die_t *die) {
-    x86_core_t *core = die->cores;
-    x86_lcpu_t *lcpu = die->lcpus;
-
-    SYSLOG("ctr", "  Die(%p): pdie_num=%d, ldie_num=%d, num_cores=%d", die, die->pdie_num, die->ldie_num, die->num_cores);
-
-    SYSLOG("ctr", "  Die->Core chain:");
-    while (core != nullptr) {
-        SYSLOG("ctr", "    %p(%d/%d)", core, core->pcore_num, core->lcore_num);
-        core = core->next_in_die;
-    }
-    SYSLOG("ctr", "  Die->lcpu chain:");
-    while (lcpu != nullptr) {
-        SYSLOG("ctr", "    %p(%d/%d)", lcpu, lcpu->pnum, lcpu->lnum);
-        lcpu = lcpu->next_in_die;
-    }
-
-    core = die->cores;
-    while (core != nullptr) {
-        print_core_topology(core);
-        core = core->next_in_die;
-    }
+    SYSLOG("ctr", "  Die(%p): pdie_num=%d, ldie_num=%d, num_cores=%2d",
+        die, die->pdie_num, die->ldie_num, die->num_cores);
 }
 
 static void print_pkg_topology(x86_pkg_t *pkg) {
-    x86_die_t  *die = pkg->dies;
-    x86_core_t *core = pkg->cores;
-    x86_lcpu_t *lcpu = pkg->lcpus;
-
-    SYSLOG("ctr", "Pkg(%p): ppkg_num=%d, lpkg_num=%d, num_dies=%d", pkg, pkg->ppkg_num, pkg->lpkg_num, pkg->num_dies);
-
-    SYSLOG("ctr", "Pkg->Die chain:");
-    while (die != nullptr) {
-        SYSLOG("ctr", "  %p(%d/%d)", die, die->pdie_num, die->ldie_num);
-        die = die->next_in_pkg;
-    }
-    SYSLOG("ctr", "Pkg->Core chain:");
-    while (core != nullptr) {
-        SYSLOG("ctr", "  %p(%d/%d)", core, core->pcore_num, core->lcore_num);
-        core = core->next_in_pkg;
-    }
-    SYSLOG("ctr", "Pkg->lcpu chain:");
-    while (lcpu != nullptr) {
-        SYSLOG("ctr", "  %p(%d/%d)", lcpu, lcpu->pnum, lcpu->lnum);
-        lcpu = lcpu->next_in_pkg;
-    }
-
-    die = pkg->dies;
-    while (die != nullptr) {
-        print_die_topology(die);
-        die = die->next_in_pkg;
-    }
+    SYSLOG("ctr", "Pkg(%p): ppkg_num=%d, lpkg_num=%d, num_dies=%d",
+        pkg, pkg->ppkg_num, pkg->lpkg_num, pkg->num_dies);
 }
 
-static void print_cpu_topology2(void) {
-    x86_pkg_t  *pkg = x86_pkgs;
+static void print_cpu_topology(void) {
+    x86_pkg_t  *pkg;
+    x86_die_t  *die;
+    x86_core_t *core;
+    x86_lcpu_t *lcpu;
 
     SYSLOG("ctr", "CPU: physical_cpu_max=%d, logical_cpu_max=%d", machine_info.physical_cpu_max, machine_info.logical_cpu_max);
+    SYSLOG("ctr", "Pkg->Die->Core->lcpu chain:");
+    pkg = x86_pkgs;
     while (pkg != nullptr) {
         print_pkg_topology(pkg);
+        die = pkg->dies;
+        while (die != nullptr) {
+            print_die_topology(die);
+            core = die->cores;
+            while (core != nullptr) {
+                print_core_topology(core);
+                lcpu = core->lcpus;
+                while (lcpu != nullptr) {
+                    print_lcpu_topology(lcpu);
+                    lcpu = lcpu->next_in_core;
+                }
+                core = core->next_in_die;
+            }
+            die = die->next_in_pkg;
+        }
+        pkg = pkg->next;
+    }
+    SYSLOG("ctr", "Pkg->Die->lcpu chain:");
+    pkg = x86_pkgs;
+    while (pkg != nullptr) {
+        print_pkg_topology(pkg);
+        die = pkg->dies;
+        while (die != nullptr) {
+            print_die_topology(die);
+            lcpu = die->lcpus;
+            while (lcpu != nullptr) {
+                print_lcpu_topology(lcpu);
+                lcpu = lcpu->next_in_die;
+            }
+            die = die->next_in_pkg;
+        }
+        pkg = pkg->next;
+    }
+    SYSLOG("ctr", "Pkg->Core chain:");
+    pkg = x86_pkgs;
+    while (pkg != nullptr) {
+        print_pkg_topology(pkg);
+        core = pkg->cores;
+        while (core != nullptr) {
+            print_core_topology(core);
+            core = core->next_in_pkg;
+        }
+        pkg = pkg->next;
+    }
+    SYSLOG("ctr", "Pkg->lcpu chain:");
+    pkg = x86_pkgs;
+    while (pkg != nullptr) {
+        print_pkg_topology(pkg);
+        lcpu = pkg->lcpus;
+        while (lcpu != nullptr) {
+            print_lcpu_topology(lcpu);
+            lcpu = lcpu->next_in_pkg;
+        }
         pkg = pkg->next;
     }
 }
@@ -219,14 +201,11 @@ static void rebuild_cpu_topology(void) {
             cpu->core->lcore_num = cpu->core->pcore_num = p0_count + i;
         }
     }
-
-    rebuild_cache_topology();
 }
 
 void my_x86_validate_topology(void) {
     load_cpus();
     SYSLOG("ctr", "---- CPU topology before rebuild ----");
-    print_cpu_topology2();
     print_cpu_topology();
     if (print_only) {
         return;
