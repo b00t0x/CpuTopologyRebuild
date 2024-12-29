@@ -24,63 +24,6 @@ int e_core_first = -1;
 extern "C" void x86_validate_topology(void);
 extern "C" int kdb_printf_unbuffered(const char *fmt, ...);
 
-static void print_cache_info(x86_cpu_cache_t *cache) {
-    x86_lcpu_t *cpu;
-
-    const char *cache_name;
-    if (cache->type == 1) {
-        cache_name = "L1D";
-    } else if (cache->type == 2) {
-        cache_name = "L1I";
-    } else if (cache->level == 2) {
-        cache_name = "L2";
-    } else {
-        cache_name = "LLC";
-    }
-
-    char buf[5];
-    char lcpus[256];
-    lcpus[0] = '\0';
-    int i = 0;
-    cpu = cache->cpus[i];
-    while (cpu != nullptr) {
-        snprintf(buf, 5, "%d,", cpu->pnum);
-        strlcat(lcpus, buf, 256);
-        cpu = cache->cpus[++i];
-    }
-
-    SYSLOG("ctr", "  %s/type=%d/level=%d/%dKB/maxcpus=%d/nlcpus=%d/lcpus=%s",
-        cache_name, cache->type, cache->level, cache->cache_size / 1024, cache->maxcpus, cache->nlcpus, lcpus);
-}
-
-static void print_cache_topology(void) {
-    x86_pkg_t  *pkg = x86_pkgs;
-    x86_lcpu_t *cpu;
-    x86_cpu_cache_t *cache;
-    x86_cpu_cache_t *caches[256];
-    int cache_count = 0;
-
-    SYSLOG("ctr", "Cache info:");
-    for (int i=2; i>=0; --i) { // LLC->L2->L1
-        cpu = pkg->lcpus;
-        while (cpu != nullptr) {
-            cache = cpu->caches[i];
-            bool new_cache = true;
-            for (int j=0; j<cache_count; ++j) {
-                if (cache == caches[j]) {
-                    new_cache = false;
-                    break;
-                }
-            }
-            if (new_cache) {
-                print_cache_info(cache);
-                caches[cache_count++] = cache;
-            }
-            cpu = cpu->next_in_pkg;
-        }
-    }
-}
-
 static void print_cpu_topology(void) {
     x86_pkg_t  *pkg = x86_pkgs;
     x86_core_t *core;
@@ -221,46 +164,6 @@ static void load_cpus(void) {
     }
 }
 
-static void rebuild_cache_topology(void) {
-    x86_lcpu_t *cpu;
-    x86_cpu_cache_t *l1;
-    x86_cpu_cache_t *l2;
-
-    // E-Core fix
-    x86_lcpu_t *e_primary;
-
-    for (int i=0; i<(e0_count/4); ++i) {
-        e_primary = e0_cpus[i*4];
-        e_primary->caches[0]->cache_size = 64 * 1024; // 64KB
-        l2 = e_primary->caches[1];
-        l2->cache_size = 2 * 1024 * 1024; // 2MB
-        for (int j=1; j<4; ++j) {
-            cpu = e0_cpus[i*4+j];
-            cpu->caches[0]->cache_size = 64 * 1024; // 64KB
-            cpu->caches[1] = l2;
-            l2->cpus[j] = cpu;
-            l2->nlcpus++;
-        }
-    }
-
-    // P-Core HTT fix
-    x86_lcpu_t *p0;
-    x86_lcpu_t *p1;
-
-    for (int i=0; i<p1_count; ++i) {
-        p0 = p0_cpus[i];
-        p1 = p1_cpus[i];
-        l1 = p0->caches[0];
-        l2 = p0->caches[1];
-
-        p1->caches[0] = l1;
-        p1->caches[1] = l2;
-
-        l1->nlcpus = l2->nlcpus = 2;
-        l1->cpus[1] = l2->cpus[1] = p1;
-    }
-}
-
 static void rebuild_cpu_topology(void) {
     // do nothing if E-Cores disabled
     if (e0_count == 0) return;
@@ -322,17 +225,15 @@ static void rebuild_cpu_topology(void) {
 
 void my_x86_validate_topology(void) {
     load_cpus();
-    SYSLOG("ctr", "---- CPU/Cache topology before rebuild ----");
+    SYSLOG("ctr", "---- CPU topology before rebuild ----");
     print_cpu_topology2();
     print_cpu_topology();
-    print_cache_topology();
     if (print_only) {
         return;
     }
     rebuild_cpu_topology();
-    SYSLOG("ctr", "---- CPU/Cache topology after rebuild ----");
+    SYSLOG("ctr", "---- CPU topology after rebuild ----");
     print_cpu_topology();
-    print_cache_topology();
     // FunctionCast(my_x86_validate_topology, org_x86_validate_topology)(); // skip topology validation
 }
 
