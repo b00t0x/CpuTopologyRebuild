@@ -8,6 +8,7 @@
 #include <i386/cpu_topology.h>
 #include <i386/cpuid.h>
 #include <Headers/kern_api.hpp>
+#include <Headers/kern_efi.hpp>
 #include <Headers/kern_patcher.hpp>
 #include <Headers/kern_version.hpp>
 
@@ -17,7 +18,8 @@ bool ADDPR(debugEnabled) = true;
 uint32_t ADDPR(debugPrintDelay) = 0;
 
 bool print_only = false;
-bool smt_spoof = false;
+bool smt_spoof = true;
+bool hide_e_core = false;
 bool fix_core_count = false;
 
 x86_lcpu_t *p0_cpus[P_CORE_MAX_COUNT]; // P-Cores
@@ -228,7 +230,6 @@ static void rebuild_cpu_topology(void) {
                 core->lcpus = lcpu;
             }
         }
-        die->num_cores = machine_info.physical_cpu_max = p0_count;
     } else {
         for (int i = 0; i < e0_count; ++i) {
             // Rebuild core order
@@ -240,10 +241,6 @@ static void rebuild_cpu_topology(void) {
                 core->next_in_die = core->next_in_pkg = e0_cpus[i - 1]->core;
             }
         }
-        die->num_cores = machine_info.physical_cpu_max = p0_count + e0_count;
-    }
-    if (fix_core_count) {
-        cpuid_info()->core_count = die->num_cores;
     }
 
     // Rebuild lcpu order
@@ -259,6 +256,15 @@ static void rebuild_cpu_topology(void) {
         lcpu->next_in_die = lcpu->next_in_pkg = core->lcpus;
     }
 
+    // fix core count info
+    if (smt_spoof && hide_e_core) {
+        die->num_cores = machine_info.physical_cpu_max = p0_count;
+    } else {
+        die->num_cores = machine_info.physical_cpu_max = p0_count + e0_count;
+    }
+    if (fix_core_count) {
+        cpuid_info()->core_count = die->num_cores;
+    }
 }
 
 void my_x86_validate_topology(void) {
@@ -274,6 +280,39 @@ void my_x86_validate_topology(void) {
     // FunctionCast(my_x86_validate_topology, org_x86_validate_topology)(); // skip topology validation
 }
 
+static void load_params(void) {
+    char ctrsmt[128] { "default" };
+
+    auto rt = EfiRuntimeServices::get(true);
+    if (rt) {
+        uint32_t attr;
+        uint64_t size;
+
+        size = sizeof(ctrsmt);
+        rt->getVariable(u"ctrsmt", &EfiRuntimeServices::LiluVendorGuid, &attr, &size, ctrsmt);
+
+        size = sizeof(fix_core_count);
+        rt->getVariable(u"ctrfixcnt", &EfiRuntimeServices::LiluVendorGuid, &attr, &size, &fix_core_count);
+
+        rt->put();
+    } else {
+        SYSLOG("ctr", "failed to get EfiRuntimeServices");
+    }
+    PE_parse_boot_argn("ctrsmt", ctrsmt, sizeof(ctrsmt));
+    if (strstr(ctrsmt, "full") || checkKernelArgument("-ctrsmt")) { // -ctrsmt is old argument
+        smt_spoof = true;
+        hide_e_core = true;
+    } else if (strstr(ctrsmt, "off")) {
+        smt_spoof = false;
+        hide_e_core = false;
+    }
+    if (checkKernelArgument("-ctrfixcnt")) {
+        fix_core_count = true;
+    }
+
+    print_only = checkKernelArgument("-ctrprt");
+}
+
 IOService *CpuTopologyRebuild::probe(IOService *provider, SInt32 *score) {
     if (!IOService::probe(provider, score)) return nullptr;
     if (!provider) return nullptr;
@@ -285,9 +324,7 @@ IOService *CpuTopologyRebuild::probe(IOService *provider, SInt32 *score) {
     if (!done) {
         lilu_get_boot_args("liludelay", &ADDPR(debugPrintDelay), sizeof(ADDPR(debugPrintDelay)));
         ADDPR(debugEnabled) = checkKernelArgument("-ctrdbg") || checkKernelArgument("-liludbgall");
-        print_only = checkKernelArgument("-ctrprt");
-        smt_spoof = checkKernelArgument("-ctrsmt");
-        fix_core_count = checkKernelArgument("-ctrfixcnt");
+        load_params();
 
         done = true;
 
