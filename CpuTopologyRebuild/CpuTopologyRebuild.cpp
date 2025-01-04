@@ -1,9 +1,12 @@
 #define P_CORE_MAX_COUNT 32
 #define E_CORE_MAX_COUNT 64
 
+#define APIC_MAX 256
+#define APIC_ID_UNIT 8
+
 #include "CpuTopologyRebuild.h"
 #include <i386/cpu_topology.h>
-// #include <i386/cpuid.h>
+#include <i386/cpuid.h>
 #include <Headers/kern_api.hpp>
 #include <Headers/kern_patcher.hpp>
 #include <Headers/kern_version.hpp>
@@ -15,14 +18,14 @@ uint32_t ADDPR(debugPrintDelay) = 0;
 
 bool print_only = false;
 bool smt_spoof = false;
+bool fix_core_count = false;
+
 x86_lcpu_t *p0_cpus[P_CORE_MAX_COUNT]; // P-Cores
 x86_lcpu_t *p1_cpus[P_CORE_MAX_COUNT]; // P-Cores HT
 x86_lcpu_t *e0_cpus[E_CORE_MAX_COUNT]; // E-Cores
-int p0_count, p1_count, e0_count;
-int e_core_first = -1;
+int p0_count, p1_count, e0_count = 0;
 
 extern "C" void x86_validate_topology(void);
-extern "C" int kdb_printf_unbuffered(const char *fmt, ...);
 extern x86_topology_parameters_t topoParms;
 
 static void print_topo_parms(void) {
@@ -124,95 +127,135 @@ static void print_cpu_topology(void) {
     }
 }
 
-static void load_cpus(void) {
-    x86_pkg_t  *pkg = x86_pkgs;
-    x86_lcpu_t *cpu;
-    x86_lcpu_t *cpus_reverse[P_CORE_MAX_COUNT * 2 + E_CORE_MAX_COUNT];
-    int count = 0;
+static bool load_cpus(void) {
+    x86_lcpu_t *lcpu;
+    x86_lcpu_t *lcpus_by_apic[APIC_MAX];
 
-    p0_count = p1_count = e0_count = 0;
-
-    cpu = pkg->lcpus;
-    while (cpu != nullptr) {
-        cpus_reverse[count++] = cpu;
-        if (e_core_first == -1 || e_core_first - cpu->pnum == 2) {
-            e_core_first = cpu->pnum;
-        }
-        cpu = cpu->next_in_pkg;
+    // load lcpus by apic id order
+    lcpu = x86_pkgs->lcpus;
+    while (lcpu != nullptr) {
+        lcpus_by_apic[lcpu->pnum] = lcpu;
+        lcpu = lcpu->next_in_pkg;
     }
-    for (int i=0; i<count; ++i) {
-        cpu = cpus_reverse[count - 1 - i];
-        if (cpu->pnum < e_core_first) { // P-Core
-            if (cpu->pnum % 2 == 0) { // primary
-                p0_cpus[p0_count++] = cpu;
-            } else { // HT core
-                p1_cpus[p1_count++] = cpu;
+    // determine P/E-core
+    for (int i = 0; i < APIC_MAX / APIC_ID_UNIT; ++i) {
+        lcpu = lcpus_by_apic[i * APIC_ID_UNIT + 2];
+        if (lcpu != nullptr) {
+            // E-Core cluster
+            for (int j = 0; j < APIC_ID_UNIT; j += 2) {
+                lcpu = lcpus_by_apic[i * APIC_ID_UNIT + j];
+                if (lcpu != nullptr) {
+                    SYSLOG("ctr", "Apic ID %02d -> E-Core", lcpu->pnum);
+                    e0_cpus[e0_count++] = lcpu;
+                }
             }
-        } else { // E-Core
-            e0_cpus[e0_count++] = cpu;
+        } else {
+            // P-Core
+            lcpu = lcpus_by_apic[i * APIC_ID_UNIT];
+            if (lcpu == nullptr) {
+                break;
+            }
+            SYSLOG("ctr", "Apic ID %02d -> P-Core", lcpu->pnum);
+            p0_cpus[p0_count++] = lcpu;
+
+            // P-Core HT
+            lcpu = lcpus_by_apic[i * APIC_ID_UNIT + 1];
+            if (lcpu != nullptr) {
+                SYSLOG("ctr", "Apic ID %02d -> P-Core(HT)", lcpu->pnum);
+                p1_cpus[p1_count++] = lcpu;
+            }
         }
     }
 
+    SYSLOG("ctr", "%d P-Cores + %d E-Cores", p0_count, e0_count);
     if (p1_count == 0) {
         smt_spoof = true;
+    } else if (p0_count != p1_count) {
+        SYSLOG("ctr", "abort: P-Core count(%d) and P-Core logical thread count(%d+%d) do not match!", p0_count, p0_count, p1_count);
+        return false;
     }
+
+    return true;
 }
 
 static void rebuild_cpu_topology(void) {
-    // do nothing if E-Cores disabled
-    if (e0_count == 0) return;
-
     x86_pkg_t  *pkg = x86_pkgs;
     x86_die_t  *die = pkg->dies;
     x86_core_t *core;
-    x86_lcpu_t *cpu;
+    x86_lcpu_t *lcpu;
 
-    // i386_cpu_info_t *info = cpuid_info();
-    x86_core_t *p_core_last = p0_cpus[p0_count - 1]->core;
-    if (smt_spoof) {
-        pkg->cores = die->cores = p_core_last;
-        die->num_cores = p0_count;
-        machine_info.physical_cpu_max = p0_count;
-        // info->core_count = p0_count;
-    } else {
-        core = e0_cpus[0]->core;
-        core->next_in_die = core->next_in_pkg = p_core_last;
-        die->num_cores = p0_count + e0_count;
-        machine_info.physical_cpu_max = p0_count + e0_count;
-        // info->core_count = p0_count + e0_count;
+    if (!load_cpus()) {
+        return;
     }
 
-    for (int i=0; i<p0_count; ++i) {
-        cpu = p0_cpus[i];
-        cpu->lnum = 0;
-        core = cpu->core;
-        core->lcore_num = core->pcore_num = i;
-        core->num_lcpus = 1;
-        core->lcpus = cpu;
-        if (i != 0) {
-            core->next_in_pkg = core->next_in_die = p0_cpus[i-1]->core;
-        }
-    }
-    for (int i=0; i<p1_count; ++i) {
-        cpu = p1_cpus[i];
+    // Rebuild P-Core chain (required for Arrow Lake?)
+    for (int i = 1; i < p0_count; ++i) {
         core = p0_cpus[i]->core;
-        cpu->lnum = core->num_lcpus++;
-        cpu->core = core;
-        cpu->next_in_core = core->lcpus;
-        core->lcpus = cpu;
+        core->lcore_num = core->pcore_num = i;
+        core->next_in_die = core->next_in_pkg = p0_cpus[i - 1]->core;
     }
-    for (int i=0; i<e0_count; ++i) {
-        cpu = e0_cpus[i];
-        if (smt_spoof) {
-            core = p0_cpus[i % p0_count]->core;
-            cpu->core = core;
-            cpu->lnum = core->num_lcpus++;
-            cpu->next_in_core = core->lcpus;
-            core->lcpus = cpu;
-        } else {
-            cpu->core->lcore_num = cpu->core->pcore_num = p0_count + i;
+
+    // Rebuild P-Cores HT
+    for (int i = 0; i < p1_count; ++i) {
+        lcpu = p1_cpus[i];
+        core = p0_cpus[i]->core;
+
+        // Merge secondary thread into primary
+        lcpu->core = core;
+        lcpu->lnum = core->num_lcpus++;
+        lcpu->next_in_core = lcpu->next_in_die = lcpu->next_in_pkg = core->lcpus;
+        core->lcpus = lcpu;
+    }
+
+    // Rebuild E-Cores
+    if (smt_spoof) {
+        int e_core_per_core = e0_count / p0_count;
+        int e_core_mod = e0_count % p0_count;
+
+        // Merge E-Core into P-Core
+        int idx = 0;
+        for (int i = 0; i < p0_count; ++i) {
+            core = p0_cpus[i]->core;
+            int e_core_count = i < e_core_mod ? e_core_per_core + 1 : e_core_per_core;
+            for (int j = 0; j < e_core_count; ++j) {
+                lcpu = e0_cpus[idx++];
+                lcpu->core = core;
+                lcpu->lnum = core->num_lcpus++;
+                lcpu->next_in_core = lcpu->next_in_die = lcpu->next_in_pkg = core->lcpus;
+                core->lcpus = lcpu;
+            }
         }
+        die->num_cores = machine_info.physical_cpu_max = p0_count;
+    } else {
+        for (int i = 0; i < e0_count; ++i) {
+            // Rebuild core order
+            core = e0_cpus[i]->core;
+            core->lcore_num = core->pcore_num = p0_count + i;
+            if (i == 0) {
+                core->next_in_die = core->next_in_pkg = p0_cpus[p0_count - 1]->core;
+            } else {
+                core->next_in_die = core->next_in_pkg = e0_cpus[i - 1]->core;
+            }
+        }
+        die->num_cores = machine_info.physical_cpu_max = p0_count + e0_count;
     }
+    if (fix_core_count) {
+        cpuid_info()->core_count = die->num_cores;
+    }
+
+    // Rebuild lcpu order
+    core = smt_spoof ? p0_cpus[p0_count - 1]->core : e0_cpus[e0_count - 1]->core;
+    pkg->cores = die->cores = core;
+    pkg->lcpus = die->lcpus = core->lcpus;
+    while (core->lcore_num != 0) {
+        lcpu = core->lcpus;
+        while (lcpu->lnum != 0) {
+            lcpu = lcpu->next_in_core;
+        }
+        core = core->next_in_pkg;
+        lcpu->next_in_die = lcpu->next_in_pkg = core->lcpus;
+    }
+
 }
 
 void my_x86_validate_topology(void) {
@@ -239,8 +282,9 @@ IOService *CpuTopologyRebuild::probe(IOService *provider, SInt32 *score) {
     if (!done) {
         lilu_get_boot_args("liludelay", &ADDPR(debugPrintDelay), sizeof(ADDPR(debugPrintDelay)));
         ADDPR(debugEnabled) = checkKernelArgument("-ctrdbg") || checkKernelArgument("-liludbgall");
-        print_only = checkKernelArgument("-ctrprt") || true;
+        print_only = checkKernelArgument("-ctrprt");
         smt_spoof = checkKernelArgument("-ctrsmt");
+        fix_core_count = checkKernelArgument("-ctrfixcnt");
 
         done = true;
 
