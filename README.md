@@ -26,8 +26,8 @@ Performance effect is currenlty uncertain.
 |NVRAM|boot-arg|Description|
 |-----|--------|-----------|
 |(none)|(none)|CPU topology will be spoofed as SMT to get better performance. E-Cores to be recognized as the N-way SMT logical threads of the P-Cores.<br>System Information show actual core count. (P+E)|
-|`ctrsmt` : `"off"`  |`ctrsmt=off` |No SMT spoofing. CPU topology will be same as real structure, but performance will be degraded.<br>Only works with Alder/Raptor Lake CPUs with HT enabled.<br>Same as v1.x.x default behavior.|
-|`ctrsmt` : `"full"` |`ctrsmt=full`|System Information shows # of P-Cores only. Performance effect is uncertain.<br>Same as v1.x.x with `-ctrsmt` behavior.|
+|`ctrsmt` : `"off"`  |`ctrsmt=off` |No SMT spoofing. CPU topology will be same as real structure, but performance will be degraded.<br>Only works with Alder/Raptor Lake CPUs with HT enabled.<br>Same as [v1.x.x](https://github.com/b00t0x/CpuTopologyRebuild/releases/tag/1.1.0) default behavior.|
+|`ctrsmt` : `"full"` |`ctrsmt=full`|System Information shows # of P-Cores only. Performance effect is uncertain.<br>Same as [v1.x.x](https://github.com/b00t0x/CpuTopologyRebuild/releases/tag/1.1.0) with `-ctrsmt` behavior.|
 |`ctrfixcnt` : `true`|`-ctrfixcnt` |Enable `machdep.cpu.core_count` fix. Performance effect is uncertain.<br>[AppleMCEReporterDisabler.kext](https://github.com/mikigal/ryzen-hackintosh/tree/master/OC/Kexts/AppleMCEReporterDisabler.kext) will be **required** to boot with this option.|
 
 ### Internal topology examples
