@@ -7,12 +7,42 @@
 		<key>Patch</key>
 		<array>
 			<dict>
+					<key>Arch</key>
+					<string>Any</string>
+					<key>Base</key>
+					<string>_cpu_thread_alloc</string>
+					<key>Comment</key>
+					<string>force HT enabled for Sequoia or later</string>
+					<key>Count</key>
+					<integer>1</integer>
+					<key>Enabled</key>
+					<true/>
+					<key>Find</key>
+					<data>QYuGlAEAAA==</data>
+					<key>Identifier</key>
+					<string>kernel</string>
+					<key>Limit</key>
+					<integer>0</integer>
+					<key>Mask</key>
+					<data></data>
+					<key>MaxKernel</key>
+					<string></string>
+					<key>MinKernel</key>
+					<string>24.0.0</string>
+					<key>Replace</key>
+					<data>uP8AAACQkA==</data>
+					<key>ReplaceMask</key>
+					<data></data>
+					<key>Skip</key>
+					<integer>1</integer>
+			</dict>
+			<dict>
 				<key>Arch</key>
 				<string>Any</string>
 				<key>Base</key>
 				<string>_cpu_thread_alloc</string>
 				<key>Comment</key>
-				<string>force HT enabled for Mojave or later</string>
+				<string>force HT enabled for Mojave to Sonoma</string>
 				<key>Count</key>
 				<integer>1</integer>
 				<key>Enabled</key>
@@ -26,7 +56,7 @@
 				<key>Mask</key>
 				<data></data>
 				<key>MaxKernel</key>
-				<string></string>
+				<string>23.99.99</string>
 				<key>MinKernel</key>
 				<string>18.0.0</string>
 				<key>Replace</key>
