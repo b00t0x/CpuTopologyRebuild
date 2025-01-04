@@ -31,33 +31,33 @@ extern "C" void x86_validate_topology(void);
 extern x86_topology_parameters_t topoParms;
 
 static void print_topo_parms(void) {
-    SYSLOG("ctr", "topoParms:");
-    SYSLOG("ctr", "  nPackages           = %3d", topoParms.nPackages);
-    SYSLOG("ctr", "  nPDiesPerPackage    = %3d | nLDiesPerPackage    = %3d", topoParms.nPDiesPerPackage, topoParms.nLDiesPerPackage);
-    SYSLOG("ctr", "  nPCoresPerPackage   = %3d | nLCoresPerPackage   = %3d", topoParms.nPCoresPerPackage, topoParms.nLCoresPerPackage);
-    SYSLOG("ctr", "  nPCoresPerDie       = %3d | nLCoresPerDie       = %3d", topoParms.nPCoresPerDie, topoParms.nLCoresPerDie);
-    SYSLOG("ctr", "  nPThreadsPerPackage = %3d | nLThreadsPerPackage = %3d", topoParms.nPThreadsPerPackage, topoParms.nLThreadsPerPackage);
-    SYSLOG("ctr", "  nPThreadsPerDie     = %3d | nLThreadsPerDie     = %3d", topoParms.nPThreadsPerDie, topoParms.nLThreadsPerDie);
-    SYSLOG("ctr", "  nPThreadsPerCore    = %3d | nLThreadsPerCore    = %3d", topoParms.nPThreadsPerCore, topoParms.nLThreadsPerCore);
+    DBGLOG("ctr", "topoParms:");
+    DBGLOG("ctr", "  nPackages           = %3d", topoParms.nPackages);
+    DBGLOG("ctr", "  nPDiesPerPackage    = %3d | nLDiesPerPackage    = %3d", topoParms.nPDiesPerPackage, topoParms.nLDiesPerPackage);
+    DBGLOG("ctr", "  nPCoresPerPackage   = %3d | nLCoresPerPackage   = %3d", topoParms.nPCoresPerPackage, topoParms.nLCoresPerPackage);
+    DBGLOG("ctr", "  nPCoresPerDie       = %3d | nLCoresPerDie       = %3d", topoParms.nPCoresPerDie, topoParms.nLCoresPerDie);
+    DBGLOG("ctr", "  nPThreadsPerPackage = %3d | nLThreadsPerPackage = %3d", topoParms.nPThreadsPerPackage, topoParms.nLThreadsPerPackage);
+    DBGLOG("ctr", "  nPThreadsPerDie     = %3d | nLThreadsPerDie     = %3d", topoParms.nPThreadsPerDie, topoParms.nLThreadsPerDie);
+    DBGLOG("ctr", "  nPThreadsPerCore    = %3d | nLThreadsPerCore    = %3d", topoParms.nPThreadsPerCore, topoParms.nLThreadsPerCore);
 }
 
 static void print_lcpu_topology(x86_lcpu_t *lcpu) {
-    SYSLOG("ctr", "      lcpu(%p): pnum=%2d, lnum=%2d, cpu_num=%2d, primary=%d, master=%d",
+    DBGLOG("ctr", "      lcpu(%p): pnum=%2d, lnum=%2d, cpu_num=%2d, primary=%d, master=%d",
         lcpu, lcpu->pnum, lcpu->lnum, lcpu->cpu_num, lcpu->primary, lcpu->master);
 }
 
 static void print_core_topology(x86_core_t *core) {
-    SYSLOG("ctr", "    Core(%p): pcore_num=%2d, lcore_num=%2d, num_lcpus=%d",
+    DBGLOG("ctr", "    Core(%p): pcore_num=%2d, lcore_num=%2d, num_lcpus=%d",
         core, core->pcore_num, core->lcore_num, core->num_lcpus);
 }
 
 static void print_die_topology(x86_die_t *die) {
-    SYSLOG("ctr", "  Die(%p): pdie_num=%d, ldie_num=%d, num_cores=%2d",
+    DBGLOG("ctr", "  Die(%p): pdie_num=%d, ldie_num=%d, num_cores=%2d",
         die, die->pdie_num, die->ldie_num, die->num_cores);
 }
 
 static void print_pkg_topology(x86_pkg_t *pkg) {
-    SYSLOG("ctr", "Pkg(%p): ppkg_num=%d, lpkg_num=%d, num_dies=%d",
+    DBGLOG("ctr", "Pkg(%p): ppkg_num=%d, lpkg_num=%d, num_dies=%d",
         pkg, pkg->ppkg_num, pkg->lpkg_num, pkg->num_dies);
 }
 
@@ -68,10 +68,10 @@ static void print_cpu_topology(void) {
     x86_lcpu_t *lcpu;
 
     i386_cpu_info_t *info = cpuid_info();
-    SYSLOG("ctr", "CPU info:");
-    SYSLOG("ctr", "  physical_cpu_max = %2d | logical_cpu_max = %2d", machine_info.physical_cpu_max, machine_info.logical_cpu_max);
-    SYSLOG("ctr", "  core_count       = %2d | thread_count    = %2d", info->core_count, info->thread_count);
-    SYSLOG("ctr", "Pkg->Die->Core->lcpu chain:");
+    DBGLOG("ctr", "CPU info:");
+    DBGLOG("ctr", "  physical_cpu_max = %2d | logical_cpu_max = %2d", machine_info.physical_cpu_max, machine_info.logical_cpu_max);
+    DBGLOG("ctr", "  core_count       = %2d | thread_count    = %2d", info->core_count, info->thread_count);
+    DBGLOG("ctr", "Pkg->Die->Core->lcpu chain:");
     pkg = x86_pkgs;
     while (pkg != nullptr) {
         print_pkg_topology(pkg);
@@ -92,7 +92,7 @@ static void print_cpu_topology(void) {
         }
         pkg = pkg->next;
     }
-    SYSLOG("ctr", "Pkg->Die->lcpu chain:");
+    DBGLOG("ctr", "Pkg->Die->lcpu chain:");
     pkg = x86_pkgs;
     while (pkg != nullptr) {
         print_pkg_topology(pkg);
@@ -108,7 +108,7 @@ static void print_cpu_topology(void) {
         }
         pkg = pkg->next;
     }
-    SYSLOG("ctr", "Pkg->Core chain:");
+    DBGLOG("ctr", "Pkg->Core chain:");
     pkg = x86_pkgs;
     while (pkg != nullptr) {
         print_pkg_topology(pkg);
@@ -119,7 +119,7 @@ static void print_cpu_topology(void) {
         }
         pkg = pkg->next;
     }
-    SYSLOG("ctr", "Pkg->lcpu chain:");
+    DBGLOG("ctr", "Pkg->lcpu chain:");
     pkg = x86_pkgs;
     while (pkg != nullptr) {
         print_pkg_topology(pkg);
@@ -150,7 +150,7 @@ static bool load_cpus(void) {
             for (int j = 0; j < APIC_ID_UNIT; j += 2) {
                 lcpu = lcpus_by_apic[i * APIC_ID_UNIT + j];
                 if (lcpu != nullptr) {
-                    SYSLOG("ctr", "ApicID %02d -> E-Core", lcpu->pnum);
+                    DBGLOG("ctr", "ApicID %02d -> E-Core", lcpu->pnum);
                     e0_cpus[e0_count++] = lcpu;
                 }
             }
@@ -160,13 +160,13 @@ static bool load_cpus(void) {
             if (lcpu == nullptr) {
                 break;
             }
-            SYSLOG("ctr", "ApicID %02d -> P-Core", lcpu->pnum);
+            DBGLOG("ctr", "ApicID %02d -> P-Core", lcpu->pnum);
             p0_cpus[p0_count++] = lcpu;
 
             // P-Core HT
             lcpu = lcpus_by_apic[i * APIC_ID_UNIT + 1];
             if (lcpu != nullptr) {
-                SYSLOG("ctr", "ApicID %02d -> P-Core(HT)", lcpu->pnum);
+                DBGLOG("ctr", "ApicID %02d -> P-Core(HT)", lcpu->pnum);
                 p1_cpus[p1_count++] = lcpu;
             }
         }
@@ -269,13 +269,13 @@ static void rebuild_cpu_topology(void) {
 
 void my_x86_validate_topology(void) {
     print_topo_parms();
-    SYSLOG("ctr", "---- CPU topology before rebuild ----");
+    DBGLOG("ctr", "---- CPU topology before rebuild ----");
     print_cpu_topology();
     if (print_only) {
         return;
     }
     rebuild_cpu_topology();
-    SYSLOG("ctr", "---- CPU topology after rebuild ----");
+    DBGLOG("ctr", "---- CPU topology after rebuild ----");
     print_cpu_topology();
     // FunctionCast(my_x86_validate_topology, org_x86_validate_topology)(); // skip topology validation
 }
