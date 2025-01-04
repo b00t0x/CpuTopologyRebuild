@@ -404,7 +404,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
 				MARKETING_VERSION = "$(MODULE_VERSION)";
 				MODULE_NAME = org.vanilla.driver.CpuTopologyRebuild;
-				MODULE_VERSION = 1.1.1;
+				MODULE_VERSION = 2.0.0;
 				OTHER_CFLAGS = (
 					"-mmmx",
 					"-msse",
@@ -453,7 +453,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
 				MARKETING_VERSION = "$(MODULE_VERSION)";
 				MODULE_NAME = org.vanilla.driver.CpuTopologyRebuild;
-				MODULE_VERSION = 1.1.1;
+				MODULE_VERSION = 2.0.0;
 				OTHER_CFLAGS = (
 					"-mmmx",
 					"-msse",

@@ -1,10 +1,14 @@
 #define P_CORE_MAX_COUNT 32
 #define E_CORE_MAX_COUNT 64
 
+#define APIC_MAX 256
+#define APIC_ID_UNIT 8
+
 #include "CpuTopologyRebuild.h"
 #include <i386/cpu_topology.h>
-// #include <i386/cpuid.h>
+#include <i386/cpuid.h>
 #include <Headers/kern_api.hpp>
+#include <Headers/kern_efi.hpp>
 #include <Headers/kern_patcher.hpp>
 #include <Headers/kern_version.hpp>
 
@@ -13,234 +17,300 @@ OSDefineMetaClassAndStructors(CpuTopologyRebuild, IOService)
 bool ADDPR(debugEnabled) = true;
 uint32_t ADDPR(debugPrintDelay) = 0;
 
-bool smt_spoof = false;
+bool print_only = false;
+bool smt_spoof = true;
+bool hide_e_core = false;
+bool fix_core_count = false;
+
 x86_lcpu_t *p0_cpus[P_CORE_MAX_COUNT]; // P-Cores
 x86_lcpu_t *p1_cpus[P_CORE_MAX_COUNT]; // P-Cores HT
 x86_lcpu_t *e0_cpus[E_CORE_MAX_COUNT]; // E-Cores
-int p0_count, p1_count, e0_count;
-int e_core_first = -1;
+int p0_count, p1_count, e0_count = 0;
 
 extern "C" void x86_validate_topology(void);
+extern x86_topology_parameters_t topoParms;
 
-static void print_cache_info(x86_cpu_cache_t *cache) {
-    x86_lcpu_t *cpu;
-
-    const char *cache_name;
-    if (cache->type == 1) {
-        cache_name = "L1D";
-    } else if (cache->type == 2) {
-        cache_name = "L1I";
-    } else if (cache->level == 2) {
-        cache_name = "L2";
-    } else {
-        cache_name = "LLC";
-    }
-
-    char buf[5];
-    char lcpus[256];
-    lcpus[0] = '\0';
-    int i = 0;
-    cpu = cache->cpus[i];
-    while (cpu != nullptr) {
-        snprintf(buf, 5, "%d,", cpu->pnum);
-        strlcat(lcpus, buf, 256);
-        cpu = cache->cpus[++i];
-    }
-
-    DBGLOG("ctr", "  %s/type=%d/level=%d/%dKB/maxcpus=%d/nlcpus=%d/lcpus=%s",
-        cache_name, cache->type, cache->level, cache->cache_size / 1024, cache->maxcpus, cache->nlcpus, lcpus);
+static void print_topo_parms(void) {
+    DBGLOG("ctr", "topoParms:");
+    DBGLOG("ctr", "  nPackages           = %3d", topoParms.nPackages);
+    DBGLOG("ctr", "  nPDiesPerPackage    = %3d | nLDiesPerPackage    = %3d", topoParms.nPDiesPerPackage, topoParms.nLDiesPerPackage);
+    DBGLOG("ctr", "  nPCoresPerPackage   = %3d | nLCoresPerPackage   = %3d", topoParms.nPCoresPerPackage, topoParms.nLCoresPerPackage);
+    DBGLOG("ctr", "  nPCoresPerDie       = %3d | nLCoresPerDie       = %3d", topoParms.nPCoresPerDie, topoParms.nLCoresPerDie);
+    DBGLOG("ctr", "  nPThreadsPerPackage = %3d | nLThreadsPerPackage = %3d", topoParms.nPThreadsPerPackage, topoParms.nLThreadsPerPackage);
+    DBGLOG("ctr", "  nPThreadsPerDie     = %3d | nLThreadsPerDie     = %3d", topoParms.nPThreadsPerDie, topoParms.nLThreadsPerDie);
+    DBGLOG("ctr", "  nPThreadsPerCore    = %3d | nLThreadsPerCore    = %3d", topoParms.nPThreadsPerCore, topoParms.nLThreadsPerCore);
 }
 
-static void print_cache_topology(void) {
-    x86_pkg_t  *pkg = x86_pkgs;
-    x86_lcpu_t *cpu;
-    x86_cpu_cache_t *cache;
-    x86_cpu_cache_t *caches[256];
-    int cache_count = 0;
+static void print_lcpu_topology(x86_lcpu_t *lcpu) {
+    DBGLOG("ctr", "      lcpu(%p): pnum=%2d, lnum=%2d, cpu_num=%2d, primary=%d, master=%d",
+        lcpu, lcpu->pnum, lcpu->lnum, lcpu->cpu_num, lcpu->primary, lcpu->master);
+}
 
-    DBGLOG("ctr", "Cache info:");
-    for (int i=2; i>=0; --i) { // LLC->L2->L1
-        cpu = pkg->lcpus;
-        while (cpu != nullptr) {
-            cache = cpu->caches[i];
-            bool new_cache = true;
-            for (int j=0; j<cache_count; ++j) {
-                if (cache == caches[j]) {
-                    new_cache = false;
-                    break;
-                }
-            }
-            if (new_cache) {
-                print_cache_info(cache);
-                caches[cache_count++] = cache;
-            }
-            cpu = cpu->next_in_pkg;
-        }
-    }
+static void print_core_topology(x86_core_t *core) {
+    DBGLOG("ctr", "    Core(%p): pcore_num=%2d, lcore_num=%2d, num_lcpus=%d",
+        core, core->pcore_num, core->lcore_num, core->num_lcpus);
+}
+
+static void print_die_topology(x86_die_t *die) {
+    DBGLOG("ctr", "  Die(%p): pdie_num=%d, ldie_num=%d, num_cores=%2d",
+        die, die->pdie_num, die->ldie_num, die->num_cores);
+}
+
+static void print_pkg_topology(x86_pkg_t *pkg) {
+    DBGLOG("ctr", "Pkg(%p): ppkg_num=%d, lpkg_num=%d, num_dies=%d",
+        pkg, pkg->ppkg_num, pkg->lpkg_num, pkg->num_dies);
 }
 
 static void print_cpu_topology(void) {
-    x86_pkg_t  *pkg = x86_pkgs;
+    x86_pkg_t  *pkg;
+    x86_die_t  *die;
     x86_core_t *core;
-    x86_lcpu_t *cpu;
+    x86_lcpu_t *lcpu;
 
-    DBGLOG("ctr", "CPU: physical_cpu_max=%d, logical_cpu_max=%d", machine_info.physical_cpu_max, machine_info.logical_cpu_max);
-    core = pkg->cores;
-    while (core != nullptr) {
-        DBGLOG("ctr", "  Core(p/l): %d/%d (lcpus: %d)", core->pcore_num, core->lcore_num, core->num_lcpus);
-        cpu = core->lcpus;
-        while (cpu != nullptr) {
-            const char *type = cpu->pnum < e_core_first ? cpu->pnum % 2 == 0 ? "P0" : "P1" : "E0";
-            DBGLOG("ctr", "    LCPU_%s(n/p/l): %2d/%2d/%d", type, cpu->cpu_num, cpu->pnum, cpu->lnum);
-            cpu = cpu->next_in_core;
+    i386_cpu_info_t *info = cpuid_info();
+    DBGLOG("ctr", "CPU info:");
+    DBGLOG("ctr", "  physical_cpu_max = %2d | logical_cpu_max = %2d", machine_info.physical_cpu_max, machine_info.logical_cpu_max);
+    DBGLOG("ctr", "  core_count       = %2d | thread_count    = %2d", info->core_count, info->thread_count);
+    DBGLOG("ctr", "Pkg->Die->Core->lcpu chain:");
+    pkg = x86_pkgs;
+    while (pkg != nullptr) {
+        print_pkg_topology(pkg);
+        die = pkg->dies;
+        while (die != nullptr) {
+            print_die_topology(die);
+            core = die->cores;
+            while (core != nullptr) {
+                print_core_topology(core);
+                lcpu = core->lcpus;
+                while (lcpu != nullptr) {
+                    print_lcpu_topology(lcpu);
+                    lcpu = lcpu->next_in_core;
+                }
+                core = core->next_in_die;
+            }
+            die = die->next_in_pkg;
         }
-        core = core->next_in_pkg;
+        pkg = pkg->next;
+    }
+    DBGLOG("ctr", "Pkg->Die->lcpu chain:");
+    pkg = x86_pkgs;
+    while (pkg != nullptr) {
+        print_pkg_topology(pkg);
+        die = pkg->dies;
+        while (die != nullptr) {
+            print_die_topology(die);
+            lcpu = die->lcpus;
+            while (lcpu != nullptr) {
+                print_lcpu_topology(lcpu);
+                lcpu = lcpu->next_in_die;
+            }
+            die = die->next_in_pkg;
+        }
+        pkg = pkg->next;
+    }
+    DBGLOG("ctr", "Pkg->Core chain:");
+    pkg = x86_pkgs;
+    while (pkg != nullptr) {
+        print_pkg_topology(pkg);
+        core = pkg->cores;
+        while (core != nullptr) {
+            print_core_topology(core);
+            core = core->next_in_pkg;
+        }
+        pkg = pkg->next;
+    }
+    DBGLOG("ctr", "Pkg->lcpu chain:");
+    pkg = x86_pkgs;
+    while (pkg != nullptr) {
+        print_pkg_topology(pkg);
+        lcpu = pkg->lcpus;
+        while (lcpu != nullptr) {
+            print_lcpu_topology(lcpu);
+            lcpu = lcpu->next_in_pkg;
+        }
+        pkg = pkg->next;
     }
 }
 
-static void load_cpus(void) {
-    x86_pkg_t  *pkg = x86_pkgs;
-    x86_lcpu_t *cpu;
-    x86_lcpu_t *cpus_reverse[P_CORE_MAX_COUNT * 2 + E_CORE_MAX_COUNT];
-    int count = 0;
+static bool load_cpus(void) {
+    x86_lcpu_t *lcpu;
+    x86_lcpu_t *lcpus_by_apic[APIC_MAX];
 
-    p0_count = p1_count = e0_count = 0;
-
-    cpu = pkg->lcpus;
-    while (cpu != nullptr) {
-        cpus_reverse[count++] = cpu;
-        if (e_core_first == -1 || e_core_first - cpu->pnum == 2) {
-            e_core_first = cpu->pnum;
-        }
-        cpu = cpu->next_in_pkg;
+    // load lcpus by apic id order
+    lcpu = x86_pkgs->lcpus;
+    while (lcpu != nullptr) {
+        lcpus_by_apic[lcpu->pnum] = lcpu;
+        lcpu = lcpu->next_in_pkg;
     }
-    for (int i=0; i<count; ++i) {
-        cpu = cpus_reverse[count - 1 - i];
-        if (cpu->pnum < e_core_first) { // P-Core
-            if (cpu->pnum % 2 == 0) { // primary
-                p0_cpus[p0_count++] = cpu;
-            } else { // HT core
-                p1_cpus[p1_count++] = cpu;
+    // determine P/E-core
+    for (int i = 0; i < APIC_MAX / APIC_ID_UNIT; ++i) {
+        lcpu = lcpus_by_apic[i * APIC_ID_UNIT + 2];
+        if (lcpu != nullptr) {
+            // E-Core cluster
+            for (int j = 0; j < APIC_ID_UNIT; j += 2) {
+                lcpu = lcpus_by_apic[i * APIC_ID_UNIT + j];
+                if (lcpu != nullptr) {
+                    DBGLOG("ctr", "ApicID %02d -> E-Core", lcpu->pnum);
+                    e0_cpus[e0_count++] = lcpu;
+                }
             }
-        } else { // E-Core
-            e0_cpus[e0_count++] = cpu;
+        } else {
+            // P-Core
+            lcpu = lcpus_by_apic[i * APIC_ID_UNIT];
+            if (lcpu == nullptr) {
+                break;
+            }
+            DBGLOG("ctr", "ApicID %02d -> P-Core", lcpu->pnum);
+            p0_cpus[p0_count++] = lcpu;
+
+            // P-Core HT
+            lcpu = lcpus_by_apic[i * APIC_ID_UNIT + 1];
+            if (lcpu != nullptr) {
+                DBGLOG("ctr", "ApicID %02d -> P-Core(HT)", lcpu->pnum);
+                p1_cpus[p1_count++] = lcpu;
+            }
         }
     }
 
+    SYSLOG("ctr", "%d P-Cores + %d E-Cores", p0_count, e0_count);
     if (p1_count == 0) {
         smt_spoof = true;
-    }
-}
-
-static void rebuild_cache_topology(void) {
-    x86_lcpu_t *cpu;
-    x86_cpu_cache_t *l1;
-    x86_cpu_cache_t *l2;
-
-    // E-Core fix
-    x86_lcpu_t *e_primary;
-
-    for (int i=0; i<(e0_count/4); ++i) {
-        e_primary = e0_cpus[i*4];
-        e_primary->caches[0]->cache_size = 64 * 1024; // 64KB
-        l2 = e_primary->caches[1];
-        l2->cache_size = 2 * 1024 * 1024; // 2MB
-        for (int j=1; j<4; ++j) {
-            cpu = e0_cpus[i*4+j];
-            cpu->caches[0]->cache_size = 64 * 1024; // 64KB
-            cpu->caches[1] = l2;
-            l2->cpus[j] = cpu;
-            l2->nlcpus++;
-        }
+    } else if (p0_count != p1_count) {
+        SYSLOG("ctr", "abort: P-Core count(%d) and P-Core logical thread count(%d+%d) do not match!", p0_count, p0_count, p1_count);
+        return false;
     }
 
-    // P-Core HTT fix
-    x86_lcpu_t *p0;
-    x86_lcpu_t *p1;
-
-    for (int i=0; i<p1_count; ++i) {
-        p0 = p0_cpus[i];
-        p1 = p1_cpus[i];
-        l1 = p0->caches[0];
-        l2 = p0->caches[1];
-
-        p1->caches[0] = l1;
-        p1->caches[1] = l2;
-
-        l1->nlcpus = l2->nlcpus = 2;
-        l1->cpus[1] = l2->cpus[1] = p1;
-    }
+    return true;
 }
 
 static void rebuild_cpu_topology(void) {
-    // do nothing if E-Cores disabled
-    if (e0_count == 0) return;
-
     x86_pkg_t  *pkg = x86_pkgs;
     x86_die_t  *die = pkg->dies;
     x86_core_t *core;
-    x86_lcpu_t *cpu;
+    x86_lcpu_t *lcpu;
 
-    // i386_cpu_info_t *info = cpuid_info();
-    x86_core_t *p_core_last = p0_cpus[p0_count - 1]->core;
-    if (smt_spoof) {
-        pkg->cores = die->cores = p_core_last;
-        die->num_cores = p0_count;
-        machine_info.physical_cpu_max = p0_count;
-        // info->core_count = p0_count;
-    } else {
-        core = e0_cpus[0]->core;
-        core->next_in_die = core->next_in_pkg = p_core_last;
-        die->num_cores = p0_count + e0_count;
-        machine_info.physical_cpu_max = p0_count + e0_count;
-        // info->core_count = p0_count + e0_count;
+    if (!load_cpus()) {
+        return;
     }
 
-    for (int i=0; i<p0_count; ++i) {
-        cpu = p0_cpus[i];
-        cpu->lnum = 0;
-        core = cpu->core;
-        core->lcore_num = core->pcore_num = i;
-        core->num_lcpus = 1;
-        core->lcpus = cpu;
-        if (i != 0) {
-            core->next_in_pkg = core->next_in_die = p0_cpus[i-1]->core;
-        }
-    }
-    for (int i=0; i<p1_count; ++i) {
-        cpu = p1_cpus[i];
+    // Rebuild P-Core chain (required for Arrow Lake?)
+    for (int i = 1; i < p0_count; ++i) {
         core = p0_cpus[i]->core;
-        cpu->lnum = core->num_lcpus++;
-        cpu->core = core;
-        cpu->next_in_core = core->lcpus;
-        core->lcpus = cpu;
+        core->lcore_num = core->pcore_num = i;
+        core->next_in_die = core->next_in_pkg = p0_cpus[i - 1]->core;
     }
-    for (int i=0; i<e0_count; ++i) {
-        cpu = e0_cpus[i];
-        if (smt_spoof) {
-            core = p0_cpus[i % p0_count]->core;
-            cpu->core = core;
-            cpu->lnum = core->num_lcpus++;
-            cpu->next_in_core = core->lcpus;
-            core->lcpus = cpu;
-        } else {
-            cpu->core->lcore_num = cpu->core->pcore_num = p0_count + i;
+
+    // Rebuild P-Cores HT
+    for (int i = 0; i < p1_count; ++i) {
+        lcpu = p1_cpus[i];
+        core = p0_cpus[i]->core;
+
+        // Merge secondary thread into primary
+        lcpu->core = core;
+        lcpu->lnum = core->num_lcpus++;
+        lcpu->next_in_core = lcpu->next_in_die = lcpu->next_in_pkg = core->lcpus;
+        core->lcpus = lcpu;
+    }
+
+    // Rebuild E-Cores
+    if (smt_spoof) {
+        int e_core_per_core = e0_count / p0_count;
+        int e_core_mod = e0_count % p0_count;
+
+        // Merge E-Core into P-Core
+        int idx = 0;
+        for (int i = 0; i < p0_count; ++i) {
+            core = p0_cpus[i]->core;
+            int e_core_count = i < e_core_mod ? e_core_per_core + 1 : e_core_per_core;
+            for (int j = 0; j < e_core_count; ++j) {
+                lcpu = e0_cpus[idx++];
+                lcpu->core = core;
+                lcpu->lnum = core->num_lcpus++;
+                lcpu->next_in_core = lcpu->next_in_die = lcpu->next_in_pkg = core->lcpus;
+                core->lcpus = lcpu;
+            }
+        }
+    } else {
+        for (int i = 0; i < e0_count; ++i) {
+            // Rebuild core order
+            core = e0_cpus[i]->core;
+            core->lcore_num = core->pcore_num = p0_count + i;
+            if (i == 0) {
+                core->next_in_die = core->next_in_pkg = p0_cpus[p0_count - 1]->core;
+            } else {
+                core->next_in_die = core->next_in_pkg = e0_cpus[i - 1]->core;
+            }
         }
     }
 
-    rebuild_cache_topology();
+    // Rebuild lcpu order
+    core = smt_spoof ? p0_cpus[p0_count - 1]->core : e0_cpus[e0_count - 1]->core;
+    pkg->cores = die->cores = core;
+    pkg->lcpus = die->lcpus = core->lcpus;
+    while (core->lcore_num != 0) {
+        lcpu = core->lcpus;
+        while (lcpu->lnum != 0) {
+            lcpu = lcpu->next_in_core;
+        }
+        core = core->next_in_pkg;
+        lcpu->next_in_die = lcpu->next_in_pkg = core->lcpus;
+    }
+
+    // fix core count info
+    if (smt_spoof && hide_e_core) {
+        die->num_cores = machine_info.physical_cpu_max = p0_count;
+    } else {
+        die->num_cores = machine_info.physical_cpu_max = p0_count + e0_count;
+    }
+    if (fix_core_count) {
+        cpuid_info()->core_count = die->num_cores;
+    }
 }
 
 void my_x86_validate_topology(void) {
-    load_cpus();
-    DBGLOG("ctr", "---- CPU/Cache topology before rebuild ----");
+    print_topo_parms();
+    DBGLOG("ctr", "---- CPU topology before rebuild ----");
     print_cpu_topology();
-    print_cache_topology();
+    if (print_only) {
+        return;
+    }
     rebuild_cpu_topology();
-    DBGLOG("ctr", "---- CPU/Cache topology after rebuild ----");
+    DBGLOG("ctr", "---- CPU topology after rebuild ----");
     print_cpu_topology();
-    print_cache_topology();
     // FunctionCast(my_x86_validate_topology, org_x86_validate_topology)(); // skip topology validation
+}
+
+static void load_params(void) {
+    char ctrsmt[128] { "default" };
+
+    auto rt = EfiRuntimeServices::get(true);
+    if (rt) {
+        uint32_t attr;
+        uint64_t size;
+
+        size = sizeof(ctrsmt);
+        rt->getVariable(u"ctrsmt", &EfiRuntimeServices::LiluVendorGuid, &attr, &size, ctrsmt);
+
+        size = sizeof(fix_core_count);
+        rt->getVariable(u"ctrfixcnt", &EfiRuntimeServices::LiluVendorGuid, &attr, &size, &fix_core_count);
+
+        rt->put();
+    } else {
+        SYSLOG("ctr", "failed to get EfiRuntimeServices");
+    }
+    PE_parse_boot_argn("ctrsmt", ctrsmt, sizeof(ctrsmt));
+    if (strstr(ctrsmt, "full") || checkKernelArgument("-ctrsmt")) { // -ctrsmt is old argument
+        smt_spoof = true;
+        hide_e_core = true;
+    } else if (strstr(ctrsmt, "off")) {
+        smt_spoof = false;
+        hide_e_core = false;
+    }
+    if (checkKernelArgument("-ctrfixcnt")) {
+        fix_core_count = true;
+    }
+
+    print_only = checkKernelArgument("-ctrprt");
 }
 
 IOService *CpuTopologyRebuild::probe(IOService *provider, SInt32 *score) {
@@ -254,7 +324,7 @@ IOService *CpuTopologyRebuild::probe(IOService *provider, SInt32 *score) {
     if (!done) {
         lilu_get_boot_args("liludelay", &ADDPR(debugPrintDelay), sizeof(ADDPR(debugPrintDelay)));
         ADDPR(debugEnabled) = checkKernelArgument("-ctrdbg") || checkKernelArgument("-liludbgall");
-        smt_spoof = checkKernelArgument("-ctrsmt");
+        load_params();
 
         done = true;
 
