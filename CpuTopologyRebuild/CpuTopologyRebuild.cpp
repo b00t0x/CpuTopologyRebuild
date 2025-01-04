@@ -23,6 +23,18 @@ int e_core_first = -1;
 
 extern "C" void x86_validate_topology(void);
 extern "C" int kdb_printf_unbuffered(const char *fmt, ...);
+extern x86_topology_parameters_t topoParms;
+
+static void print_topo_parms(void) {
+    SYSLOG("ctr", "topoParms:");
+    SYSLOG("ctr", "  nPackages           = %3d", topoParms.nPackages);
+    SYSLOG("ctr", "  nPDiesPerPackage    = %3d | nLDiesPerPackage    = %3d", topoParms.nPDiesPerPackage, topoParms.nLDiesPerPackage);
+    SYSLOG("ctr", "  nPCoresPerPackage   = %3d | nLCoresPerPackage   = %3d", topoParms.nPCoresPerPackage, topoParms.nLCoresPerPackage);
+    SYSLOG("ctr", "  nPCoresPerDie       = %3d | nLCoresPerDie       = %3d", topoParms.nPCoresPerDie, topoParms.nLCoresPerDie);
+    SYSLOG("ctr", "  nPThreadsPerPackage = %3d | nLThreadsPerPackage = %3d", topoParms.nPThreadsPerPackage, topoParms.nLThreadsPerPackage);
+    SYSLOG("ctr", "  nPThreadsPerDie     = %3d | nLThreadsPerDie     = %3d", topoParms.nPThreadsPerDie, topoParms.nLThreadsPerDie);
+    SYSLOG("ctr", "  nPThreadsPerCore    = %3d | nLThreadsPerCore    = %3d", topoParms.nPThreadsPerCore, topoParms.nLThreadsPerCore);
+}
 
 static void print_lcpu_topology(x86_lcpu_t *lcpu) {
     SYSLOG("ctr", "      lcpu(%p): pnum=%2d, lnum=%2d, cpu_num=%2d, primary=%d, master=%d",
@@ -204,7 +216,7 @@ static void rebuild_cpu_topology(void) {
 }
 
 void my_x86_validate_topology(void) {
-    load_cpus();
+    print_topo_parms();
     SYSLOG("ctr", "---- CPU topology before rebuild ----");
     print_cpu_topology();
     if (print_only) {
