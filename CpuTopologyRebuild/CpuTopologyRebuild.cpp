@@ -65,7 +65,10 @@ static void print_cpu_topology(void) {
     x86_core_t *core;
     x86_lcpu_t *lcpu;
 
-    SYSLOG("ctr", "CPU: physical_cpu_max=%d, logical_cpu_max=%d", machine_info.physical_cpu_max, machine_info.logical_cpu_max);
+    i386_cpu_info_t *info = cpuid_info();
+    SYSLOG("ctr", "CPU info:");
+    SYSLOG("ctr", "  physical_cpu_max = %2d | logical_cpu_max = %2d", machine_info.physical_cpu_max, machine_info.logical_cpu_max);
+    SYSLOG("ctr", "  core_count       = %2d | thread_count    = %2d", info->core_count, info->thread_count);
     SYSLOG("ctr", "Pkg->Die->Core->lcpu chain:");
     pkg = x86_pkgs;
     while (pkg != nullptr) {
@@ -145,7 +148,7 @@ static bool load_cpus(void) {
             for (int j = 0; j < APIC_ID_UNIT; j += 2) {
                 lcpu = lcpus_by_apic[i * APIC_ID_UNIT + j];
                 if (lcpu != nullptr) {
-                    SYSLOG("ctr", "Apic ID %02d -> E-Core", lcpu->pnum);
+                    SYSLOG("ctr", "ApicID %02d -> E-Core", lcpu->pnum);
                     e0_cpus[e0_count++] = lcpu;
                 }
             }
@@ -155,13 +158,13 @@ static bool load_cpus(void) {
             if (lcpu == nullptr) {
                 break;
             }
-            SYSLOG("ctr", "Apic ID %02d -> P-Core", lcpu->pnum);
+            SYSLOG("ctr", "ApicID %02d -> P-Core", lcpu->pnum);
             p0_cpus[p0_count++] = lcpu;
 
             // P-Core HT
             lcpu = lcpus_by_apic[i * APIC_ID_UNIT + 1];
             if (lcpu != nullptr) {
-                SYSLOG("ctr", "Apic ID %02d -> P-Core(HT)", lcpu->pnum);
+                SYSLOG("ctr", "ApicID %02d -> P-Core(HT)", lcpu->pnum);
                 p1_cpus[p1_count++] = lcpu;
             }
         }
