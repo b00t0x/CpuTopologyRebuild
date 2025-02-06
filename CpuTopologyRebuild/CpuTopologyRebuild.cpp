@@ -144,28 +144,21 @@ static bool load_cpus(void) {
     }
     // determine P/E-core
     for (int i = 0; i < APIC_MAX / APIC_ID_UNIT; ++i) {
-        lcpu = lcpus_by_apic[i * APIC_ID_UNIT + 2];
-        if (lcpu != nullptr) {
-            // E-Core cluster
-            for (int j = 0; j < APIC_ID_UNIT; j += 2) {
-                lcpu = lcpus_by_apic[i * APIC_ID_UNIT + j];
-                if (lcpu != nullptr) {
-                    DBGLOG("ctr", "ApicID %02d -> E-Core", lcpu->pnum);
-                    e0_cpus[e0_count++] = lcpu;
-                }
-            }
-        } else {
-            // P-Core
-            lcpu = lcpus_by_apic[i * APIC_ID_UNIT];
+        if (lcpus_by_apic[i * APIC_ID_UNIT] == nullptr) {
+            continue;
+        }
+        bool is_e_cores = lcpus_by_apic[i * APIC_ID_UNIT + 2] != nullptr;
+        for (int j = 0; j < APIC_ID_UNIT; ++j) {
+            lcpu = lcpus_by_apic[i * APIC_ID_UNIT + j];
             if (lcpu == nullptr) {
-                break;
-            }
-            DBGLOG("ctr", "ApicID %02d -> P-Core", lcpu->pnum);
-            p0_cpus[p0_count++] = lcpu;
-
-            // P-Core HT
-            lcpu = lcpus_by_apic[i * APIC_ID_UNIT + 1];
-            if (lcpu != nullptr) {
+                continue;
+            } else if (is_e_cores) {
+                DBGLOG("ctr", "ApicID %02d -> E-Core", lcpu->pnum);
+                e0_cpus[e0_count++] = lcpu;
+            } else if (lcpu->pnum % 2 == 0) {
+                DBGLOG("ctr", "ApicID %02d -> P-Core", lcpu->pnum);
+                p0_cpus[p0_count++] = lcpu;
+            } else {
                 DBGLOG("ctr", "ApicID %02d -> P-Core(HT)", lcpu->pnum);
                 p1_cpus[p1_count++] = lcpu;
             }
