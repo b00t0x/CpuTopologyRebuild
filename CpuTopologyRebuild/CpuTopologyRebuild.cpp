@@ -290,25 +290,37 @@ static void load_params(void) {
 
         size = sizeof(ctrsmt);
         rt->getVariable(u"ctrsmt", &EfiRuntimeServices::LiluVendorGuid, &attr, &size, ctrsmt);
+        DBGLOG("ctr", "NVRAM     | ctrsmt    | %s", ctrsmt);
 
         size = sizeof(fix_core_count);
         rt->getVariable(u"ctrfixcnt", &EfiRuntimeServices::LiluVendorGuid, &attr, &size, &fix_core_count);
+        DBGLOG("ctr", "NVRAM     | ctrfixcnt | %d", fix_core_count);
 
         rt->put();
     } else {
         SYSLOG("ctr", "failed to get EfiRuntimeServices");
     }
     PE_parse_boot_argn("ctrsmt", ctrsmt, sizeof(ctrsmt));
+    DBGLOG("ctr", "boot-args | ctrsmt    | %s", ctrsmt);
+
     if (strstr(ctrsmt, "full") || checkKernelArgument("-ctrsmt")) { // -ctrsmt is old argument
+        DBGLOG("ctr", "type | smt_spoof + hide_e_core");
         smt_spoof = true;
         hide_e_core = true;
     } else if (strstr(ctrsmt, "off")) {
+        DBGLOG("ctr", "type | none");
         smt_spoof = false;
         hide_e_core = false;
+    } else {
+        DBGLOG("ctr", "type      | smt_spoof");
     }
     if (checkKernelArgument("-ctrfixcnt")) {
+        DBGLOG("ctr", "boot-args | ctrfixcnt | 1");
         fix_core_count = true;
+    } else {
+        DBGLOG("ctr", "boot-args | ctrfixcnt | 0");
     }
+    DBGLOG("ctr", "configuration : smt_spoof = %d, hide_e_core = %d, fix_core_count = %d", smt_spoof, hide_e_core, fix_core_count);
 
     print_only = checkKernelArgument("-ctrprt");
 }
