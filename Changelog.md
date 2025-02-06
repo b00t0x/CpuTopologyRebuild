@@ -1,5 +1,14 @@
 CpuTopologyRebuild Changelog
 ===================
+#### v2.0.1
+- Fix core structure detection for some CPUs ( 6aa8432 )
+
+#### v2.0.0
+- Experimental Arrow Lake support, and more ( #23 )
+- Remove cache structure rebuild implementation ( #23 )
+- System Information app shows all physical core count by default ( #23 )
+- Fix `machdep.cpu.core_count` by `-ctrfixcnt` ( #23 )
+
 #### v1.1.0
 - "Total Number of Cores" in System Profiler is displayed correctly ( #8 )
 
