@@ -260,6 +260,19 @@ static void rebuild_cpu_topology(void) {
     }
 }
 
+// used for debugging
+static void count_override() {
+    int physical_cpu_max, core_count = 0;
+    PE_parse_boot_argn("ctrphys", &physical_cpu_max, sizeof(physical_cpu_max));
+    PE_parse_boot_argn("ctrccnt", &core_count, sizeof(core_count));
+    if (physical_cpu_max) {
+        machine_info.physical_cpu_max = physical_cpu_max;
+    }
+    if (core_count) {
+        cpuid_info()->core_count = core_count;
+    }
+}
+
 void my_x86_validate_topology(void) {
     print_topo_parms();
     DBGLOG("ctr", "---- CPU topology before rebuild ----");
@@ -268,6 +281,7 @@ void my_x86_validate_topology(void) {
         return;
     }
     rebuild_cpu_topology();
+    count_override();
     DBGLOG("ctr", "---- CPU topology after rebuild ----");
     print_cpu_topology();
     // FunctionCast(my_x86_validate_topology, org_x86_validate_topology)(); // skip topology validation
