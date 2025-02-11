@@ -1,5 +1,8 @@
 CpuTopologyRebuild Changelog
 ===================
+#### v2.0.２
+- Fix `num_cores` count ( 7f5d0d6 )
+
 #### v2.0.1
 - Fix core structure detection for some CPUs ( 6aa8432 )
 
