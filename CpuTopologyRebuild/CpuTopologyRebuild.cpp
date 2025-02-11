@@ -250,13 +250,10 @@ static void rebuild_cpu_topology(void) {
     }
 
     // fix core count info
-    if (smt_spoof && hide_e_core) {
-        die->num_cores = machine_info.physical_cpu_max = p0_count;
-    } else {
-        die->num_cores = machine_info.physical_cpu_max = p0_count + e0_count;
-    }
+    die->num_cores = die->cores->lcore_num + 1;
+    machine_info.physical_cpu_max = hide_e_core ? die->num_cores : p0_count + e0_count;
     if (fix_core_count) {
-        cpuid_info()->core_count = die->num_cores;
+        cpuid_info()->core_count = machine_info.physical_cpu_max;
     }
 }
 
